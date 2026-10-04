@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>초과근무 관리 달력</title>
+<meta name="description" content="만년 달력 기반 초과근무 시간 누적 및 월 초과근무수당 계산">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --bg:#f4f5f7; --card:#ffffff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6eb; --soft:#f8f9fb;
+  --sun:#d9363e; --sat:#2563eb; --hol-bg:#fdf1f1; --sat-bg:#f1f5fe; --accent:#0f766e; --accent-soft:#e6f4f2;
+  --input:#ffffff; --today:#f59e0b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171d; --card:#1c2028; --ink:#e7e9ee; --muted:#9aa3b2; --line:#2c323d; --soft:#222731;
+    --sun:#f2737a; --sat:#7aa7ff; --hol-bg:#2a1d20; --sat-bg:#1b2233; --accent:#4fd1c0; --accent-soft:#16302d;
+    --input:#14171d; --today:#fbbf24;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171d; --card:#1c2028; --ink:#e7e9ee; --muted:#9aa3b2; --line:#2c323d; --soft:#222731;
+  --sun:#f2737a; --sat:#7aa7ff; --hol-bg:#2a1d20; --sat-bg:#1b2233; --accent:#4fd1c0; --accent-soft:#16302d;
+  --input:#14171d; --today:#fbbf24;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:22px;margin:0;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+select,input,button,textarea{font:inherit;color:inherit}
+select,.rate input{background:var(--input);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+button{background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.spacer{flex:1}
+.title-month{font-size:20px;font-weight:700;margin:0 6px;min-width:120px;text-align:center}
+
+table.cal{width:100%;border-collapse:collapse;table-layout:fixed}
+.cal th{font-size:13px;font-weight:600;padding:8px 2px;border-bottom:1px solid var(--line);color:var(--muted)}
+.cal th.sun{color:var(--sun)} .cal th.sat{color:var(--sat)} .cal th.tot{color:var(--ink)}
+.cal td{border:1px solid var(--line);vertical-align:top;padding:5px 5px 6px;height:86px}
+.cal td.empty{background:var(--soft)}
+.cal td.sat{background:var(--sat-bg)}
+.cal td.hol{background:var(--hol-bg)}
+.cal td.tot{text-align:center;vertical-align:middle;font-weight:700;background:var(--soft);font-variant-numeric:tabular-nums}
+.cal td.tot small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.dnum{font-weight:700;font-size:15px;display:flex;align-items:center;gap:4px}
+.sun .dnum,.hol .dnum{color:var(--sun)}
+.sat:not(.hol) .dnum{color:var(--sat)}
+.today .dnum::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--today)}
+.hname{font-size:11px;color:var(--sun);line-height:1.2;min-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal input{width:100%;margin-top:4px;background:var(--input);border:1px solid var(--line);border-radius:7px;padding:5px 4px;text-align:center;font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.cal input::-webkit-outer-spin-button,.cal input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.cal input.has{border-color:var(--accent);background:var(--accent-soft);font-weight:700}
+.cal input:focus{outline:2px solid var(--accent);outline-offset:0}
+.editmode td.day{cursor:pointer}
+.editmode td.day:hover{outline:2px dashed var(--sun);outline-offset:-3px}
+.editmode .cal input{pointer-events:none;opacity:.5}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.stat{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.stat.money{background:var(--accent-soft);border-color:var(--accent)}
+.stat.money .v{color:var(--accent)}
+.rate input{width:100%;margin-top:4px;font-size:18px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.memo{margin-top:12px}
+.memo textarea{width:100%;min-height:64px;background:var(--input);border:1px solid var(--line);border-radius:9px;padding:8px 10px;resize:vertical}
+.memo label{font-size:12px;color:var(--muted)}
+
+h2{font-size:17px;margin:26px 0 10px}
+table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.year th,.year td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.year th{font-size:12px;color:var(--muted);font-weight:600}
+.year th:first-child,.year td:first-child{text-align:left}
+.year tbody tr{cursor:pointer}
+.year tbody tr:hover{background:var(--soft)}
+.year tr.cur{background:var(--accent-soft)}
+.year tfoot td{font-weight:700;border-top:2px solid var(--ink);border-bottom:none}
+.scroll{overflow-x:auto}
+.foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;align-items:center}
+.foot .note{font-size:12px;color:var(--muted);flex-basis:100%}
+
+@media (max-width:640px){
+  .wrap{padding:14px 10px 40px}
+  h1{font-size:19px}
+  .cal td{height:74px;padding:3px}
+  .cal th{font-size:12px}
+  .dnum{font-size:13px}
+  .hname{font-size:9.5px;min-height:12px}
+  .cal input{padding:4px 1px;font-size:13px}
+  .cal td.tot{font-size:13px}
+  .cal td.tot small{display:none}
+  .summary{grid-template-columns:repeat(2,1fr)}
+  .stat .v{font-size:18px}
+  .title-month{font-size:17px;min-width:96px}
+  .year th,.year td{padding:7px 6px;font-size:13px}
+  .year th:nth-child(3),.year td:nth-child(3){display:none}
+}
+@media print{
+  body{background:#fff}
+  .toolbar button,.foot,.hint{display:none}
+  .card{border:none;padding:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <div>
+      <h1>초과근무 관리 달력</h1>
+      <div class="sub">날짜별 초과근무시간 입력 → 주·월 합계와 수당 자동 계산 (수당은 10원 미만 절사)</div>
+    </div>
+    <button id="themeBtn" title="화면 테마 전환">테마</button>
+  </header>
+
+  <section class="card">
+    <div class="toolbar">
+      <button id="prev" aria-label="이전 달">◀</button>
+      <select id="year" aria-label="연도"></select>
+      <select id="month" aria-label="월"></select>
+      <button id="next" aria-label="다음 달">▶</button>
+      <button id="todayBtn">이번 달</button>
+      <span class="spacer"></span>
+      <button id="editHol" title="날짜를 눌러 공휴일을 추가하거나 해제합니다">공휴일 편집</button>
+    </div>
+
+    <table class="cal" id="cal">
+      <thead><tr>
+        <th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th><th class="tot">계</th>
+      </tr></thead>
+      <tbody id="calBody"></tbody>
+    </table>
+    <div class="hint" id="hint">시간은 0.5 단위로 입력할 수 있습니다. 입력 즉시 이 기기의 브라우저에 저장됩니다.</div>
+
+    <div class="summary">
+      <div class="stat"><div class="k">월 초과근무 합계</div><div class="v" id="sumHours">0시간</div></div>
+      <div class="stat"><div class="k">근무일수</div><div class="v" id="sumDays">0일</div></div>
+      <div class="stat rate"><div class="k">시간당 단가 (원)</div><input id="rate" type="text" inputmode="numeric" autocomplete="off"></div>
+      <div class="stat money"><div class="k">월 초과근무수당</div><div class="v" id="sumPay">0원</div></div>
+    </div>
+
+    <div class="memo">
+      <label for="memo">이 달 메모</label>
+      <textarea id="memo" placeholder="예: 급여작업, 공제내역 확인 등"></textarea>
+    </div>
+  </section>
+
+  <h2 id="yearTitle">연간 누적</h2>
+  <section class="card scroll">
+    <table class="year">
+      <thead><tr><th>월</th><th>초과근무</th><th>단가</th><th>수당</th><th>누적 시간</th><th>누적 수당</th></tr></thead>
+      <tbody id="yearBody"></tbody>
+      <tfoot><tr><td>합계</td><td id="yH"></td><td></td><td id="yP"></td><td></td><td></td></tr></tfoot>
+    </table>
+  </section>
+
+  <div class="foot">
+    <button id="exportBtn">백업 파일 저장</button>
+    <button id="importBtn">백업 파일 불러오기</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+    <button onclick="window.print()">인쇄</button>
+    <div class="note">입력한 자료는 지금 사용하는 기기·브라우저에만 저장됩니다. 다른 기기(휴대폰↔PC)에서 이어서 보려면 「백업 파일 저장」 후 다른 기기에서 「불러오기」 하세요.
+      공휴일은 양력·음력(설날·추석·부처님오신날)·대체공휴일 규칙으로 자동 계산되며, 선거일 등 임시공휴일은 「공휴일 편집」으로 추가할 수 있습니다.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var KEY = 'overtime-calendar-v1';
+var DEFAULT_RATE = 12368;
+
+/* ---------- 저장소 ---------- */
+function load(){
+  try{ var s = JSON.parse(localStorage.getItem(KEY)); if(s && typeof s==='object') return norm(s); }catch(e){}
+  return norm({});
+}
+function norm(s){
+  s.hours = s.hours || {}; s.rates = s.rates || {}; s.memos = s.memos || {}; s.hol = s.hol || {};
+  if(!s.defaultRate) s.defaultRate = DEFAULT_RATE;
+  return s;
+}
+var S = load();
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+
+/* ---------- 날짜 유틸 ---------- */
+function pad(n){ return (n<10?'0':'')+n; }
+function ymd(y,m,d){ return y+'-'+pad(m)+'-'+pad(d); }
+function dow(y,m,d){ return new Date(y,m-1,d).getDay(); }
+function addDays(key,n){ var p=key.split('-'); var dt=new Date(+p[0],+p[1]-1,+p[2]+n); return ymd(dt.getFullYear(),dt.getMonth()+1,dt.getDate()); }
+function keyDow(key){ var p=key.split('-'); return dow(+p[0],+p[1],+p[2]); }
+function daysIn(y,m){ return new Date(y,m,0).getDate(); }
+
+/* ---------- 음력 → 양력 (한국 음력: dangi 달력) ---------- */
+var lunarFmt = null;
+['en-u-ca-dangi','en-u-ca-chinese'].some(function(loc){
+  try{
+    var f = new Intl.DateTimeFormat(loc,{month:'numeric',day:'numeric',timeZone:'Asia/Seoul'});
+    if(/dangi|chinese/.test(f.resolvedOptions().calendar)){ lunarFmt=f; return true; }
+  }catch(e){}
+  return false;
+});
+function lunarOf(y,m,d){
+  var parts = lunarFmt.formatToParts(new Date(Date.UTC(y,m-1,d,3)));
+  var lm='',ld='';
+  parts.forEach(function(p){ if(p.type==='month') lm=p.value; if(p.type==='day') ld=p.value; });
+  return {m: /^\d+$/.test(lm) ? +lm : -1, d: +ld};  // 윤달이면 -1
+}
+function findLunar(y, lm, ld, fromM, fromD, span){
+  if(!lunarFmt) return null;
+  var start = new Date(y, fromM-1, fromD);
+  for(var i=0;i<span;i++){
+    var dt = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
+    var L = lunarOf(dt.getFullYear(), dt.getMonth()+1, dt.getDate());
+    if(L.m===lm && L.d===ld) return ymd(dt.getFullYear(), dt.getMonth()+1, dt.getDate());
+  }
+  return null;
+}
+
+/* ---------- 공휴일 계산 ---------- */
+// 임시공휴일·선거일 (확정된 것만)
+var SPECIAL = {
+  '2017-05-09':'대통령선거','2017-10-02':'임시공휴일','2018-06-13':'지방선거','2020-04-15':'국회의원선거',
+  '2020-08-17':'임시공휴일','2022-03-09':'대통령선거','2022-06-01':'지방선거','2023-10-02':'임시공휴일',
+  '2024-04-10':'국회의원선거','2024-10-01':'국군의 날(임시)','2025-01-27':'임시공휴일','2025-06-03':'대통령선거',
+  '2026-06-03':'지방선거'
+};
+var holCache = {};
+function baseHolidays(y){
+  if(holCache[y]) return holCache[y];
+  var map = {};       // key -> [names]
+  function add(k,n){ if(!k) return; (map[k]=map[k]||[]).push(n); }
+  // sub: 대체공휴일 규칙 — 'we'(토·일), 'sun'(일), null(없음)
+  var singles = [];
+  function single(k,n,sub){ if(!k) return; add(k,n); singles.push({k:k,sub:sub}); }
+
+  single(ymd(y,1,1),'신정',null);
+  single(ymd(y,3,1),'삼일절', y>=2021?'we':null);
+  if(y>=2026) single(ymd(y,5,1),'노동절',null);
+  single(ymd(y,5,5),'어린이날', y>=2014?'we':null);
+  single(ymd(y,6,6),'현충일',null);
+  if(y>=2026 || y<=2007) single(ymd(y,7,17),'제헌절', y>=2026?'we':null);
+  single(ymd(y,8,15),'광복절', y>=2021?'we':null);
+  single(ymd(y,10,3),'개천절', y>=2021?'we':null);
+  if(y>=2013 || y<=1990) single(ymd(y,10,9),'한글날', y>=2021?'we':null);
+  single(ymd(y,12,25),'성탄절', y>=2023?'we':null);
+  single(findLunar(y,4,8,4,10,70),'부처님오신날', y>=2023?'we':null);
+
+  var groups = [];
+  var seol = findLunar(y,1,1,1,15,45);
+  if(seol){ var g=[addDays(seol,-1),seol,addDays(seol,1)]; g.forEach(function(k,i){ add(k, i===1?'설날':'설날 연휴'); }); groups.push(g); }
+  var chu = findLunar(y,8,15,9,1,45);
+  if(chu){ var g2=[addDays(chu,-1),chu,addDays(chu,1)]; g2.forEach(function(k,i){ add(k, i===1?'추석':'추석 연휴'); }); groups.push(g2); }
+  Object.keys(SPECIAL).forEach(function(k){ if(+k.slice(0,4)===y) add(k,SPECIAL[k]); });
+
+  // 대체공휴일 (2014년 이후)
+  if(y>=2014){
+    var subs = [];
+    var isHol = function(k){ return !!map[k] || subs.indexOf(k)>=0; };
+    var nextFree = function(k){
+      var n=k; do{ n=addDays(n,1); }while(isHol(n) || keyDow(n)===0 || keyDow(n)===6);
+      return n;
+    };
+    var need = [];
+    // 설·추석: 연휴 중 일요일 또는 다른 공휴일과 겹치는 날 수만큼
+    groups.forEach(function(g){
+      var cnt=0;
+      g.forEach(function(k){ if(keyDow(k)===0 || map[k].length>1) cnt++; });
+      for(var i=0;i<cnt;i++) need.push(g[2]);
+    });
+    // 단일 공휴일: 토·일 또는 다른 공휴일과 겹침 (겹친 경우 한 번만)
+    var seen = {};
+    singles.forEach(function(s){
+      if(!s.sub) { seen[s.k]=true; return; }
+      var d = keyDow(s.k);
+      var inGroup = groups.some(function(g){ return g.indexOf(s.k)>=0; });
+      if(d===0 || d===6 || (seen[s.k] && !inGroup)) need.push(s.k);
+      seen[s.k]=true;
+    });
+    need.sort();
+    need.forEach(function(k){ var n=nextFree(k); subs.push(n); add(n,'대체공휴일'); });
+  }
+  holCache[y]=map;
+  return map;
+}
+function holidayName(key){
+  var o = S.hol[key];
+  if(o && o.off) return null;
+  if(o && o.name) return o.name;
+  var y = +key.slice(0,4);
+  var list = baseHolidays(y)[key];
+  if(!list) return null;
+  // 같은 이름 중복 제거
+  return list.filter(function(n,i){ return list.indexOf(n)===i; }).join('·');
+}
+
+/* ---------- 계산 ---------- */
+function monthKey(y,m){ return y+'-'+pad(m); }
+function rateOf(y,m){ var r=S.rates[monthKey(y,m)]; return (r===undefined||r===null||r==='') ? S.defaultRate : +r; }
+function monthHours(y,m){
+  var t=0,days=0,n=daysIn(y,m);
+  for(var d=1;d<=n;d++){ var v=+S.hours[ymd(y,m,d)]||0; if(v>0){ t+=v; days++; } }
+  return {hours:round2(t), days:days};
+}
+function pay(h,r){ return Math.floor(h*r/10)*10; }  // ROUNDDOWN(시간*단가,-1)
+function round2(x){ return Math.round(x*100)/100; }
+function fmtH(h){ return (Math.round(h*100)/100).toLocaleString('ko-KR'); }
+function won(n){ return n.toLocaleString('ko-KR'); }
+
+/* ---------- 화면 ---------- */
+var $ = function(id){ return document.getElementById(id); };
+var now = new Date();
+var cur = {y: now.getFullYear(), m: now.getMonth()+1};
+var editMode = false;
+
+(function initSelectors(){
+  var ys=$('year'), ms=$('month');
+  for(var y=1950;y<=2100;y++){ var o=document.createElement('option'); o.value=y; o.textContent=y+'년'; ys.appendChild(o); }
+  for(var m=1;m<=12;m++){ var o2=document.createElement('option'); o2.value=m; o2.textContent=m+'월'; ms.appendChild(o2); }
+})();
+
+function renderCal(){
+  var y=cur.y, m=cur.m;
+  $('year').value=y; $('month').value=m;
+  var first = dow(y,m,1), n = daysIn(y,m);
+  var todayKey = ymd(now.getFullYear(), now.getMonth()+1, now.getDate());
+  var html = '', d = 1 - first;
+  while(d <= n){
+    html += '<tr>';
+    var weekKeys = [];
+    for(var c=0;c<7;c++,d++){
+      if(d<1 || d>n){ html += '<td class="empty"></td>'; continue; }
+      var k = ymd(y,m,d), hn = holidayName(k);
+      weekKeys.push(k);
+      var cls = ['day'];
+      if(c===0) cls.push('sun'); if(c===6) cls.push('sat'); if(hn) cls.push('hol'); if(k===todayKey) cls.push('today');
+      var v = S.hours[k]; var has = v!==undefined && v!=='' && +v>0;
+      html += '<td class="'+cls.join(' ')+'" data-k="'+k+'">'+
+        '<div class="dnum">'+d+'</div>'+
+        '<div class="hname" title="'+(hn||'')+'">'+(hn||'')+'</div>'+
+        '<input type="number" inputmode="decimal" step="0.5" min="0" max="24" data-k="'+k+'" aria-label="'+m+'월 '+d+'일 초과근무시간" value="'+(v!==undefined?v:'')+'"'+(has?' class="has"':'')+'>'+
+        '</td>';
+    }
+    html += '<td class="tot" data-w="'+weekKeys.join(',')+'"></td></tr>';
+  }
+  $('calBody').innerHTML = html;
+  $('rate').value = won(rateOf(y,m));
+  $('memo').value = S.memos[monthKey(y,m)] || '';
+  refreshTotals();
+}
+
+function refreshTotals(){
+  var y=cur.y, m=cur.m;
+  Array.prototype.forEach.call(document.querySelectorAll('#calBody td.tot'), function(td){
+    var keys = td.getAttribute('data-w').split(',').filter(Boolean), t=0;
+    keys.forEach(function(k){ t += +S.hours[k]||0; });
+    td.innerHTML = t>0 ? fmtH(t)+'<small>시간</small>' : '<span style="color:var(--muted)">–</span>';
+  });
+  var mh = monthHours(y,m), r = rateOf(y,m);
+  $('sumHours').textContent = fmtH(mh.hours)+'시간';
+  $('sumDays').textContent = mh.days+'일';
+  $('sumPay').textContent = won(pay(mh.hours,r))+'원';
+  renderYear();
+}
+
+function renderYear(){
+  var y=cur.y, html='', cumH=0, cumP=0;
+  $('yearTitle').textContent = y+'년 연간 누적';
+  for(var m=1;m<=12;m++){
+    var mh=monthHours(y,m), r=rateOf(y,m), p=pay(mh.hours,r);
+    cumH = round2(cumH+mh.hours); cumP += p;
+    html += '<tr data-m="'+m+'"'+(m===cur.m?' class="cur"':'')+'><td>'+m+'월</td><td>'+(mh.hours?fmtH(mh.hours)+'시간':'–')+'</td><td>'+won(r)+'</td><td>'+(p?won(p)+'원':'–')+'</td><td>'+fmtH(cumH)+'시간</td><td>'+won(cumP)+'원</td></tr>';
+  }
+  $('yearBody').innerHTML = html;
+  $('yH').textContent = fmtH(cumH)+'시간';
+  $('yP').textContent = won(cumP)+'원';
+}
+
+/* ---------- 이벤트 ---------- */
+$('calBody').addEventListener('input', function(e){
+  var t=e.target; if(t.tagName!=='INPUT') return;
+  var k=t.getAttribute('data-k'), v=t.value.trim();
+  if(v==='' || isNaN(+v) || +v<=0){ delete S.hours[k]; t.classList.remove('has'); }
+  else { S.hours[k] = Math.min(24, +v); t.classList.add('has'); }
+  save(); refreshTotals();
+});
+$('calBody').addEventListener('keydown', function(e){
+  if(e.key!=='Enter' || e.target.tagName!=='INPUT') return;
+  e.preventDefault();
+  var all = Array.prototype.slice.call(document.querySelectorAll('#calBody input'));
+  var i = all.indexOf(e.target); if(all[i+1]) all[i+1].focus();
+});
+$('calBody').addEventListener('click', function(e){
+  if(!editMode) return;
+  var td = e.target.closest('td.day'); if(!td) return;
+  var k = td.getAttribute('data-k');
+  var base = (baseHolidays(+k.slice(0,4))[k]);
+  var curName = holidayName(k);
+  if(curName){
+    if(base) S.hol[k] = {off:true}; else delete S.hol[k];
+  } else {
+    if(base && S.hol[k] && S.hol[k].off){ delete S.hol[k]; }
+    else {
+      var name = window.prompt(k+' 공휴일 이름을 입력하세요', '임시공휴일');
+      if(name===null) return;
+      S.hol[k] = {name: name.trim() || '휴일'};
+    }
+  }
+  save(); renderCal();
+});
+$('editHol').addEventListener('click', function(){
+  editMode = !editMode;
+  this.classList.toggle('on', editMode);
+  this.textContent = editMode ? '편집 완료' : '공휴일 편집';
+  $('app').classList.toggle('editmode', editMode);
+  $('hint').textContent = editMode ? '날짜 칸을 누르면 공휴일로 지정되거나 해제됩니다. 끝나면 「편집 완료」를 누르세요.' : '시간은 0.5 단위로 입력할 수 있습니다. 입력 즉시 이 기기의 브라우저에 저장됩니다.';
+});
+
+$('rate').addEventListener('input', function(){
+  var raw = this.value.replace(/[^\d]/g,'');
+  var r = raw==='' ? 0 : +raw;
+  S.rates[monthKey(cur.y,cur.m)] = r;
+  if(r>0) S.defaultRate = r;   // 다음에 새로 여는 달의 기본 단가
+  save(); refreshTotals();
+});
+$('rate').addEventListener('blur', function(){ this.value = won(rateOf(cur.y,cur.m)); });
+$('rate').addEventListener('focus', function(){ this.value = String(rateOf(cur.y,cur.m)); this.select(); });
+
+$('memo').addEventListener('input', function(){
+  var k=monthKey(cur.y,cur.m);
+  if(this.value) S.memos[k]=this.value; else delete S.memos[k];
+  save();
+});
+
+function go(y,m){
+  if(m<1){ m=12; y--; } if(m>12){ m=1; y++; }
+  if(y<1950||y>2100) return;
+  cur={y:y,m:m}; renderCal();
+}
+$('prev').onclick = function(){ go(cur.y, cur.m-1); };
+$('next').onclick = function(){ go(cur.y, cur.m+1); };
+$('todayBtn').onclick = function(){ go(now.getFullYear(), now.getMonth()+1); };
+$('year').onchange = function(){ go(+this.value, cur.m); };
+$('month').onchange = function(){ go(cur.y, +this.value); };
+$('yearBody').addEventListener('click', function(e){
+  var tr = e.target.closest('tr'); if(tr) { go(cur.y, +tr.getAttribute('data-m')); window.scrollTo({top:0,behavior:'smooth'}); }
+});
+
+/* 백업 */
+$('exportBtn').onclick = function(){
+  var blob = new Blob([JSON.stringify(S,null,1)],{type:'application/json'});
+  var a = document.createElement('a');
+  var t = new Date();
+  a.href = URL.createObjectURL(blob);
+  a.download = '초과근무_백업_'+t.getFullYear()+pad(t.getMonth()+1)+pad(t.getDate())+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+};
+$('importBtn').onclick = function(){ $('importFile').click(); };
+$('importFile').onchange = function(){
+  var f = this.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    try{
+      var d = norm(JSON.parse(rd.result));
+      var replace = window.confirm('백업 파일을 불러옵니다.\n\n[확인] 기존 자료에 합치기 (같은 날짜는 백업 값으로)\n[취소] 불러오기 취소');
+      if(!replace) return;
+      ['hours','rates','memos','hol'].forEach(function(p){ Object.keys(d[p]).forEach(function(k){ S[p][k]=d[p][k]; }); });
+      if(d.defaultRate) S.defaultRate = d.defaultRate;
+      save(); renderCal();
+      alert('불러오기를 완료했습니다.');
+    }catch(err){ alert('백업 파일을 읽을 수 없습니다.'); }
+  };
+  rd.readAsText(f);
+  this.value='';
+};
+
+/* 테마 */
+function applyTheme(t){ if(t) document.documentElement.setAttribute('data-theme',t); else document.documentElement.removeAttribute('data-theme'); }
+var th=null; try{ th=localStorage.getItem(KEY+'-theme'); }catch(e){}
+applyTheme(th);
+$('themeBtn').onclick = function(){
+  var dark = document.documentElement.getAttribute('data-theme')==='dark' ||
+    (!document.documentElement.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var t = dark ? 'light' : 'dark';
+  applyTheme(t); try{ localStorage.setItem(KEY+'-theme',t); }catch(e){}
+};
+
+renderCal();
+})();
+</script>
+</body>
+</html>
