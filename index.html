@@ -196,6 +196,7 @@ table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
       <button id="next" aria-label="다음 달">▶</button>
       <button id="todayBtn">이번 달</button>
       <span class="spacer"></span>
+      <button id="xlsxBtn" title="보고 있는 달을 엑셀 파일로 내려받습니다">엑셀 다운로드</button>
       <button id="editHol" title="날짜를 눌러 공휴일을 추가하거나 해제합니다">공휴일 편집</button>
     </div>
 
@@ -554,6 +555,131 @@ $('todayBtn').onclick=function(){ go(now.getFullYear(),now.getMonth()+1); };
 $('year').onchange=function(){ go(+this.value,cur.m); };
 $('month').onchange=function(){ go(cur.y,+this.value); };
 $('yearBody').addEventListener('click', function(e){ var tr=e.target.closest('tr'); if(tr){ go(cur.y,+tr.getAttribute('data-m')); window.scrollTo({top:0,behavior:'smooth'}); } });
+
+/* ---------- 엑셀 다운로드 ---------- */
+var EXCELJS_URL='https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+function loadExcelJS(){
+  if(window.ExcelJS) return Promise.resolve();
+  return new Promise(function(ok,fail){
+    var sc=document.createElement('script'); sc.src=EXCELJS_URL; sc.onload=ok; sc.onerror=function(){ fail(new Error('엑셀 기능을 불러오지 못했습니다.')); };
+    document.head.appendChild(sc);
+  });
+}
+async function exportXlsx(){
+  var btn=$('xlsxBtn'); btn.disabled=true; btn.textContent='만드는 중…';
+  try{
+    await loadExcelJS();
+    var y=cur.y, m=cur.m, n=daysIn(y,m), first=dow(y,m,1), rate=rateOf(y,m), mm=monthMin(y,m);
+    var C={sun:'FFD9363E',sat:'FF2563EB',hol:'FFFDF1F1',satBg:'FFF1F5FE',empty:'FFF3F4F6',head:'FFF8F9FB',line:'FFD1D5DB',accent:'FF0F766E',accentBg:'FFE6F4F2',ink:'FF1D2330',muted:'FF6B7280'};
+    var FONT='맑은 고딕';
+    var fill=function(c){ return {type:'pattern',pattern:'solid',fgColor:{argb:c}}; };
+    var thin={style:'thin',color:{argb:C.line}};
+    var box={top:thin,left:thin,bottom:thin,right:thin};
+    var HM='[h]"시간" mm"분";;"–"';
+
+    var wb=new ExcelJS.Workbook(); wb.creator='초과근무 관리 달력';
+    var ws=wb.addWorksheet(m+'월',{views:[{showGridLines:false}],
+      pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:1,horizontalCentered:true,
+        margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2}}});
+    ws.columns=[1,2,3,4,5,6,7,8].map(function(){ return {width:15}; });
+
+    // 제목
+    ws.mergeCells('A1:H1');
+    var t=ws.getCell('A1'); t.value=y+'년 '+m+'월 초과근무 내역';
+    t.font={name:FONT,size:18,bold:true,color:{argb:C.ink}}; t.alignment={vertical:'middle',horizontal:'left'};
+    ws.getRow(1).height=34;
+    ws.mergeCells('A2:H2');
+    var st=ws.getCell('A2'); st.value='출력일 '+new Date().toLocaleDateString('ko-KR')+'  ·  시간당 단가 '+won(rate)+'원';
+    st.font={name:FONT,size:10,color:{argb:C.muted}};
+    ws.getRow(2).height=18;
+
+    // 요일 머리글
+    var heads=['일','월','화','수','목','금','토','계'];
+    var hr=ws.getRow(4); hr.height=24;
+    heads.forEach(function(h,i){
+      var c=hr.getCell(i+1); c.value=h; c.border=box; c.fill=fill(C.head);
+      c.alignment={horizontal:'center',vertical:'middle'};
+      c.font={name:FONT,size:11,bold:true,color:{argb:i===0?C.sun:i===6?C.sat:C.ink}};
+    });
+
+    // 주 단위 (날짜 줄 + 시간 줄)
+    var r=5, d=1-first, weekTotals=[];
+    while(d<=n){
+      var dr=ws.getRow(r), vr=ws.getRow(r+1);
+      dr.height=32; vr.height=26;
+      for(var c=0;c<7;c++,d++){
+        var dc=dr.getCell(c+1), vc=vr.getCell(c+1);
+        dc.border={top:thin,left:thin,right:thin}; vc.border={bottom:thin,left:thin,right:thin};
+        if(d<1||d>n){ dc.fill=fill(C.empty); vc.fill=fill(C.empty); continue; }
+        var k=ymd(y,m,d), hn=holidayName(k), red=(c===0||!!hn), blue=(c===6&&!hn);
+        var bg=hn?C.hol:(c===6?C.satBg:null);
+        dc.value={richText:[{text:String(d),font:{name:FONT,size:12,bold:true,color:{argb:red?C.sun:blue?C.sat:C.ink}}}]
+          .concat(hn?[{text:'\n'+hn,font:{name:FONT,size:8,color:{argb:C.sun}}}]:[])};
+        dc.alignment={vertical:'top',horizontal:'left',wrapText:true,indent:0};
+        var v=S.min[k]||0;
+        if(v){ vc.value=v/1440; vc.font={name:FONT,size:11,bold:true,color:{argb:C.accent}}; }
+        vc.numFmt=HM; vc.alignment={horizontal:'center',vertical:'middle'};
+        if(bg){ dc.fill=fill(bg); vc.fill=fill(bg); }
+      }
+      ws.mergeCells(r,8,r+1,8);
+      var tc=ws.getCell(r,8);
+      var wkMin=0; for(var cc=1;cc<=7;cc++){ var vv=vr.getCell(cc).value; if(typeof vv==='number') wkMin+=Math.round(vv*1440); }
+      tc.value={formula:'SUM(A'+(r+1)+':G'+(r+1)+')',result:wkMin/1440};
+      tc.numFmt=HM; tc.border=box; tc.fill=fill(C.head);
+      tc.font={name:FONT,size:11,bold:true,color:{argb:C.ink}}; tc.alignment={horizontal:'center',vertical:'middle'};
+      weekTotals.push('H'+r);
+      r+=2;
+    }
+
+    // 요약
+    r+=1;
+    var lab=ws.getRow(r), val=ws.getRow(r+1), sub=ws.getRow(r+2);
+    lab.height=20; val.height=30; sub.height=18;
+    var ph=Math.floor(mm.min/60), pay=payOf(mm.min,rate);
+    var totRef='A'+(r+1), phRef='C'+(r+1), rateRef='E'+(r+1);
+    var boxes=[
+      ['A','B','월 초과근무 합계',{formula:weekTotals.join('+'),result:mm.min/1440},HM,'근무일 '+mm.days+'일',null],
+      ['C','D','수당 인정 시간',{formula:'INT(ROUND('+totRef+'*1440,0)/60)',result:ph},'#,##0"시간"','분 단위는 수당 제외',null],
+      ['E','F','시간당 단가 (원)',rate,'#,##0',' ',null],
+      ['G','H','월 초과근무수당',{formula:'ROUNDDOWN('+phRef+'*'+rateRef+',-1)',result:pay},'#,##0"원"',null,'money']
+    ];
+    boxes.forEach(function(b){
+      [r,r+1,r+2].forEach(function(rr){ ws.mergeCells(b[0]+rr+':'+b[1]+rr); });
+      var bg=b[6]?C.accentBg:C.head, bc={style:'thin',color:{argb:b[6]?C.accent:C.line}};
+      var l=ws.getCell(b[0]+r), v=ws.getCell(b[0]+(r+1)), s2=ws.getCell(b[0]+(r+2));
+      l.value=b[2]; l.font={name:FONT,size:9,color:{argb:C.muted}};
+      v.value=b[3]; v.numFmt=b[4]; v.font={name:FONT,size:15,bold:true,color:{argb:b[6]?C.accent:C.ink}};
+      s2.value=b[5]!==null?b[5]:{formula:'TEXT('+phRef+',"#,##0")&"시간 × "&TEXT('+rateRef+',"#,##0")&"원"',result:ph.toLocaleString('ko-KR')+'시간 × '+won(rate)+'원'};
+      s2.font={name:FONT,size:9,color:{argb:C.muted}};
+      [l,v,s2].forEach(function(cl){ cl.fill=fill(bg); cl.alignment={horizontal:'left',vertical:'middle',indent:1}; });
+      l.border={top:bc,left:bc,right:bc}; v.border={left:bc,right:bc}; s2.border={bottom:bc,left:bc,right:bc};
+    });
+    r+=4;
+
+    // 메모·기준
+    var memo=S.memos[monthKey(y,m)];
+    if(memo){
+      ws.mergeCells('A'+r+':H'+r);
+      var mc=ws.getCell('A'+r); mc.value='메모: '+memo; mc.font={name:FONT,size:10}; mc.alignment={wrapText:true,vertical:'top'};
+      ws.getRow(r).height=Math.min(120,16*(memo.split('\n').length+1)); r++;
+    }
+    ws.mergeCells('A'+r+':H'+r);
+    var nc=ws.getCell('A'+r);
+    nc.value='※ 월 수당 = 월 합계 중 시간 단위 × 단가 (분 단위 제외), 10원 미만 절사. 시간 칸을 고치면 합계·수당이 자동으로 다시 계산됩니다.';
+    nc.font={name:FONT,size:9,color:{argb:C.muted}};
+    ws.pageSetup.printArea='A1:H'+r;
+
+    var buf=await wb.xlsx.writeBuffer();
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=y+'년 '+m+'월 초과 근무 내역.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },2000);
+    toast(a.download+' 파일을 내려받았습니다.');
+  }catch(err){ toast((err&&err.message)||'엑셀 파일을 만들지 못했습니다.'); }
+  finally{ btn.disabled=false; btn.textContent='엑셀 다운로드'; }
+}
+$('xlsxBtn').onclick=exportXlsx;
 
 /* ---------- 백업 ---------- */
 $('exportBtn').onclick=function(){
