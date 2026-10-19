@@ -145,7 +145,7 @@ table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
   .summary{grid-template-columns:repeat(2,1fr)}
   .stat .v{font-size:18px}
   .year th,.year td{padding:7px 6px;font-size:13px}
-  .year th:nth-child(3),.year td:nth-child(3),.year th:nth-child(5),.year td:nth-child(5){display:none}
+  .year th:nth-child(3),.year td:nth-child(3){display:none}
 }
 @media print{
   body{background:#fff}
@@ -224,9 +224,9 @@ table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
   <h2 id="yearTitle">연간 누적</h2>
   <section class="card" style="overflow-x:auto">
     <table class="year">
-      <thead><tr><th>월</th><th>초과근무</th><th>단가</th><th>수당</th><th>누적 시간</th><th>누적 수당</th></tr></thead>
+      <thead><tr><th>월</th><th>초과근무시간</th><th>단가</th><th>수당</th><th>인정시간</th></tr></thead>
       <tbody id="yearBody"></tbody>
-      <tfoot><tr><td>합계</td><td id="yH"></td><td></td><td id="yP"></td><td></td><td></td></tr></tfoot>
+      <tfoot><tr><td>누계</td><td id="yH"></td><td></td><td id="yP"></td><td id="yR"></td></tr></tfoot>
     </table>
   </section>
 
@@ -459,13 +459,17 @@ function render(){
   renderYear();
 }
 function renderYear(){
-  var y=cur.y, html='', cm=0, cp=0;
+  var y=cur.y, html='', cm=0, cp=0, cr=0;
   $('yearTitle').textContent=y+'년 연간 누적';
   for(var m=1;m<=12;m++){
-    var mm=monthMin(y,m), r=rateOf(y,m), p=payOf(mm.min,r); cm+=mm.min; cp+=p;
-    html+='<tr data-m="'+m+'"'+(m===cur.m?' class="cur"':'')+'><td>'+m+'월</td><td>'+(mm.min?fmtHM(mm.min):'–')+'</td><td>'+won(r)+'</td><td>'+(p?won(p)+'원':'–')+'</td><td>'+fmtHM(cm)+'</td><td>'+won(cp)+'원</td></tr>';
+    var mm=monthMin(y,m), r=rateOf(y,m), ph=recognizedHours(mm.min), p=payOf(mm.min,r);
+    cm+=mm.min; cp+=p; cr+=ph;
+    html+='<tr data-m="'+m+'"'+(m===cur.m?' class="cur"':'')+'><td>'+m+'월</td><td>'+(mm.min?fmtHM(mm.min):'–')+'</td><td>'+won(r)+'</td><td>'+(p?won(p)+'원':'–')+'</td><td>'+fmtHM(ph*60)+'</td></tr>';
   }
-  $('yearBody').innerHTML=html; $('yH').textContent=fmtHM(cm); $('yP').textContent=won(cp)+'원';
+  $('yearBody').innerHTML=html;
+  $('yH').textContent=fmtHM(cm);
+  $('yP').textContent=won(cp)+'원';
+  $('yR').textContent=fmtHM(cr*60);
 }
 function updateStatus(){
   var n=user?dirtyCount():0, st=$('status');
