@@ -235,7 +235,7 @@ table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
     <button id="importBtn">백업 파일 불러오기</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
     <button onclick="window.print()">인쇄</button>
-    <div class="note">월 수당 = (월 합계 중 시간 단위만) × 단가, 10원 미만 절사. 분 단위 나머지는 합계에는 누적되지만 수당에서는 제외됩니다.
+    <div class="note">월 수당 = (월 합계 중 시간 단위, 최대 57시간) × 단가, 10원 미만 절사. 분 단위는 수당에서 제외되고 월 초과근무 합계에는 그대로 반영됩니다.
       공휴일은 양력·음력(설날·추석·부처님오신날)·대체공휴일 규칙으로 자동 계산되며, 선거일 등 임시공휴일은 「공휴일 편집」으로 추가할 수 있습니다.</div>
   </div>
 </div>
@@ -274,6 +274,7 @@ var SB_URL = 'https://eqpiuszmgrwituwprgdc.supabase.co';
 var SB_KEY = 'sb_publishable_SN2iYw3cBqstKGIS3NdoTw_5ghetwqQ';
 var TABLE = 'overtime_calendar';
 var DEFAULT_RATE = 12368;
+var PAY_HOURS_LIMIT = 57;
 var LOCAL = 'otc2:local';
 var SKIP = 'otc2:skipLogin';
 
@@ -413,7 +414,8 @@ function holidayName(key){
 function monthKey(y,m){ return y+'-'+pad(m); }
 function rateOf(y,m){ var r=S.rates[monthKey(y,m)]; return (r===undefined||r===null||r==='') ? S.defaultRate : +r; }
 function monthMin(y,m){ var t=0,days=0,n=daysIn(y,m); for(var d=1;d<=n;d++){ var v=S.min[ymd(y,m,d)]||0; if(v>0){ t+=v; days++; } } return {min:t, days:days}; }
-function payOf(min,rate){ return Math.floor(Math.floor(min/60)*rate/10)*10; }   // 시간 단위만, 10원 미만 절사
+function recognizedHours(min){ return Math.min(Math.floor(min/60), PAY_HOURS_LIMIT); }
+function payOf(min,rate){ return Math.floor(recognizedHours(min)*rate/10)*10; }   // 시간 단위만, 최대 57시간 인정, 10원 미만 절사
 function fmtHM(min){ var h=Math.floor(min/60), m=min%60; if(!min) return '0시간'; return (h?h.toLocaleString('ko-KR')+'시간':'')+(h&&m?' ':'')+(m?m+'분':''); }
 function fmtShort(min){ return Math.floor(min/60)+':'+pad(min%60); }
 function won(n){ return (+n).toLocaleString('ko-KR'); }
@@ -445,11 +447,11 @@ function render(){
     html+='<td class="tot">'+(wk?'<span class="lg">'+fmtHM(wk).replace(' ','<br>')+'</span><span class="sm">'+fmtShort(wk)+'</span>':'<span style="color:var(--muted)">–</span>')+'</td></tr>';
   }
   $('calBody').innerHTML=html;
-  var mm=monthMin(y,m), r=rateOf(y,m), ph=Math.floor(mm.min/60);
+  var mm=monthMin(y,m), r=rateOf(y,m), ph=recognizedHours(mm.min);
   $('sumHours').textContent=fmtHM(mm.min);
   $('sumDays').textContent='근무일 '+mm.days+'일';
   $('payHours').textContent=ph.toLocaleString('ko-KR')+'시간';
-  $('dropMin').textContent=(mm.min%60)?(mm.min%60)+'분은 수당 제외':'분 단위는 수당 제외';
+  $('dropMin').textContent=mm.min>=PAY_HOURS_LIMIT*60?'월 최대 '+PAY_HOURS_LIMIT+'시간 인정':((mm.min%60)?(mm.min%60)+'분은 수당 제외':'분 단위는 수당 제외');
   if(document.activeElement!==$('rate')) $('rate').value=won(r);
   $('sumPay').textContent=won(payOf(mm.min,r))+'원';
   $('payCalc').textContent=ph.toLocaleString('ko-KR')+'시간 × '+won(r)+'원';
@@ -635,11 +637,11 @@ async function exportXlsx(){
     r+=1;
     var lab=ws.getRow(r), val=ws.getRow(r+1), sub=ws.getRow(r+2);
     lab.height=20; val.height=30; sub.height=18;
-    var ph=Math.floor(mm.min/60), pay=payOf(mm.min,rate);
+    var ph=recognizedHours(mm.min), pay=payOf(mm.min,rate);
     var totRef='A'+(r+1), phRef='C'+(r+1), rateRef='E'+(r+1);
     var boxes=[
       ['A','B','월 초과근무 합계',{formula:weekTotals.join('+'),result:mm.min/1440},HM,'근무일 '+mm.days+'일',null],
-      ['C','D','수당 인정 시간',{formula:'INT(ROUND('+totRef+'*1440,0)/60)',result:ph},'#,##0"시간"','분 단위는 수당 제외',null],
+      ['C','D','수당 인정 시간',{formula:'MIN('+PAY_HOURS_LIMIT+',INT(ROUND('+totRef+'*1440,0)/60))',result:ph},'#,##0"시간"',mm.min>=PAY_HOURS_LIMIT*60?'월 최대 '+PAY_HOURS_LIMIT+'시간 인정':'분 단위는 수당 제외',null],
       ['E','F','시간당 단가 (원)',rate,'#,##0',' ',null],
       ['G','H','월 초과근무수당',{formula:'ROUNDDOWN('+phRef+'*'+rateRef+',-1)',result:pay},'#,##0"원"',null,'money']
     ];
@@ -665,7 +667,7 @@ async function exportXlsx(){
     }
     ws.mergeCells('A'+r+':H'+r);
     var nc=ws.getCell('A'+r);
-    nc.value='※ 월 수당 = 월 합계 중 시간 단위 × 단가 (분 단위 제외), 10원 미만 절사. 시간 칸을 고치면 합계·수당이 자동으로 다시 계산됩니다.';
+    nc.value='※ 월 수당 = 월 합계 중 시간 단위(최대 57시간) × 단가 (분 단위 제외), 10원 미만 절사. 월 초과근무 합계는 실제 누적 시간을 표시합니다.';
     nc.font={name:FONT,size:9,color:{argb:C.muted}};
     ws.pageSetup.printArea='A1:H'+r;
 
