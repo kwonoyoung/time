@@ -130,6 +130,18 @@ table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--card);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.25s;z-index:60;pointer-events:none;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* 시간·분 계산기 */
+.calc{margin-top:14px}
+.calc h3{margin:0 0 10px;font-size:16px}
+.calc-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.calc-row label{flex:1 1 70px;min-width:0;font-size:12px;color:var(--muted)}
+.calc-row input,.calc-row select{width:100%;margin-top:4px;font-size:18px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;background:var(--input);border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+.calc-row select{flex:0 0 auto;width:auto;min-width:88px;font-size:15px;padding:8px 10px;margin-top:0}
+.calc-row input:focus,.calc-row select:focus{outline:2px solid var(--accent)}
+.calc-out{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.calc-out .stat .v{font-size:20px}
+@media (max-width:640px){ .calc-out{grid-template-columns:1fr} .calc-row select{min-width:70px} }
+
 @media (max-width:640px){
   .wrap{padding:0 10px 40px}
   .savebar .in{padding:8px 10px}
@@ -219,6 +231,25 @@ table.year{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
       <label for="memo">이 달 메모</label>
       <textarea id="memo" placeholder="예: 급여작업, 공제내역 확인 등"></textarea>
     </div>
+  </section>
+
+  <section class="card calc" id="calc">
+    <h3>시간·분 계산기</h3>
+    <div class="calc-row">
+      <label>시간<input id="cA_h" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+      <label>분<input id="cA_m" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+      <select id="cOp" aria-label="계산 방법">
+        <option value="+">+ 더하기</option>
+        <option value="-">− 빼기</option>
+      </select>
+      <label>시간<input id="cB_h" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+      <label>분<input id="cB_m" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+    </div>
+    <div class="calc-out">
+      <div class="stat"><div class="k">결과</div><div class="v" id="cRes">0시간</div><div class="x" id="cDec">0.00시간</div></div>
+      <div class="stat money"><div class="k">수당 환산 (이 달 단가 기준)</div><div class="v" id="cPay">–</div><div class="x" id="cPayNote"></div></div>
+    </div>
+    <div class="hint">계산 결과는 저장되지 않습니다. 수당은 시간 단위만 계산하며 10원 미만은 절사합니다.</div>
   </section>
 
   <h2 id="yearTitle">연간 누적</h2>
@@ -457,6 +488,7 @@ function render(){
   $('payCalc').textContent=ph.toLocaleString('ko-KR')+'시간 × '+won(r)+'원';
   if(document.activeElement!==$('memo')) $('memo').value=S.memos[monthKey(y,m)]||'';
   renderYear();
+  runCalc();
 }
 function renderYear(){
   var y=cur.y, html='', cm=0, cp=0, cr=0;
@@ -818,6 +850,30 @@ if(window.supabase && window.supabase.createClient){
 }
 $('loginOpenBtn').onclick=function(){ lsSet(SKIP,'0'); showAuth(true); };
 $('skipLogin').onclick=function(){ lsSet(SKIP,'1'); showAuth(false); updateStatus(); };
+
+/* ---------- 시간·분 계산기 (화면만 계산, 저장 안 함) ---------- */
+function calcInput(hId,mId){
+  var h=Math.max(0,parseInt($(hId).value,10)||0), m=Math.max(0,parseInt($(mId).value,10)||0);
+  return h*60+m;
+}
+function runCalc(){
+  var a=calcInput('cA_h','cA_m'), b=calcInput('cB_h','cB_m');
+  var t=$('cOp').value==='-' ? a-b : a+b;
+  var abs=Math.abs(t), sign=t<0?'−':'';
+  $('cRes').textContent = t ? sign+fmtHM(abs) : '0시간';
+  $('cDec').textContent = sign+(abs/60).toFixed(2)+'시간';
+  if(t>0){
+    var r=rateOf(cur.y,cur.m), hrs=Math.floor(t/60);
+    $('cPay').textContent = won(Math.floor(hrs*r/10)*10)+'원';
+    $('cPayNote').textContent = hrs.toLocaleString('ko-KR')+'시간 × '+won(r)+'원 (월 57시간 상한 미적용)';
+  } else {
+    $('cPay').textContent = '–';
+    $('cPayNote').textContent = t<0 ? '음수 결과는 수당을 계산하지 않습니다' : '';
+  }
+}
+['cA_h','cA_m','cB_h','cB_m','cOp'].forEach(function(id){
+  $(id).addEventListener(id==='cOp'?'change':'input', runCalc);
+});
 
 loadCache(LOCAL); render(); updateStatus();
 if(!sb) showAuth(false); else if(lsGet(SKIP)!=='1') showAuth(true);
